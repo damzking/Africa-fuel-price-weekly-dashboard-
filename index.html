@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pinnacle Daily Dashboard</title>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #17201b;
+        --muted: #657169;
+        --line: #d9e1dc;
+        --paper: #f7f8f4;
+        --panel: #ffffff;
+        --green: #1f7a4d;
+        --gold: #d8a928;
+        --red: #b84a3b;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: var(--ink);
+        background: var(--paper);
+      }
+
+      header {
+        border-bottom: 1px solid var(--line);
+        background: var(--panel);
+      }
+
+      .wrap {
+        width: min(1180px, calc(100% - 32px));
+        margin: 0 auto;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 24px;
+        padding: 28px 0 22px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(28px, 5vw, 48px);
+        line-height: 1;
+        letter-spacing: 0;
+      }
+
+      .subtitle {
+        margin: 10px 0 0;
+        color: var(--muted);
+        max-width: 680px;
+        font-size: 16px;
+      }
+
+      .source {
+        color: var(--muted);
+        font-size: 13px;
+        text-align: right;
+        min-width: 180px;
+      }
+
+      main {
+        padding: 24px 0 40px;
+      }
+
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+
+      .metric {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 16px;
+        min-height: 94px;
+      }
+
+      .metric span {
+        display: block;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .metric strong {
+        display: block;
+        margin-top: 8px;
+        font-size: 28px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+        gap: 18px;
+        align-items: start;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        min-width: 0;
+      }
+
+      .panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .panel-head h2 {
+        margin: 0;
+        font-size: 16px;
+      }
+
+      .controls {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+
+      button,
+      input {
+        height: 36px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #fff;
+        color: var(--ink);
+        padding: 0 10px;
+        font: inherit;
+      }
+
+      button {
+        cursor: pointer;
+        font-weight: 600;
+      }
+
+      button.active {
+        border-color: var(--green);
+        background: var(--green);
+        color: #fff;
+      }
+
+      #chart {
+        height: 640px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+
+      th,
+      td {
+        text-align: left;
+        padding: 11px 14px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      th {
+        color: var(--muted);
+        font-weight: 600;
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+
+      td:last-child,
+      th:last-child {
+        text-align: right;
+      }
+
+      .status {
+        padding: 18px;
+        color: var(--muted);
+      }
+
+      @media (max-width: 860px) {
+        .topbar,
+        .panel-head {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .source {
+          text-align: left;
+        }
+
+        .metrics,
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        #chart {
+          height: 520px;
+        }
+      }
+
+      .site-footer {
+        background: #0b3b5a;
+        color: #fff;
+        border-top: 4px solid #0b2d45;
+        margin-top: 28px;
+      }
+
+      .site-footer .wrap {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 0;
+      }
+
+      .footer-logo {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .footer-logo img {
+        height: 36px;
+        width: auto;
+        display: block;
+      }
+
+      .footer-brand {
+        font-weight: 700;
+        font-size: 16px;
+        letter-spacing: 0.2px;
+      }
+
+      .footer-right {
+        font-size: 13px;
+        color: rgba(255,255,255,0.9);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="wrap topbar">
+        <div>
+          <h1>Pinnacle Daily Dashboard</h1>
+          <p class="subtitle">Weekly fuel prices across African countries.</p>
+          <p class="subtitle" id="weekSummary">Loading weekly comparison…</p>
+        </div>
+        <div class="source" id="sourceDate">Loading latest week...</div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <section class="metrics" aria-label="Summary metrics">
+        <div class="metric"><span>Countries</span><strong id="metricCount">--</strong></div>
+        <div class="metric"><span>Average price</span><strong id="metricAverage">--</strong></div>
+        <div class="metric"><span>Lowest</span><strong id="metricLowest">--</strong></div>
+        <div class="metric"><span>Highest</span><strong id="metricHighest">--</strong></div>
+      </section>
+
+      <section class="grid">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Price Ranking</h2>
+            <div class="controls">
+              <button id="lowestButton" type="button">Lowest</button>
+              <button id="highestButton" class="active" type="button">Highest</button>
+            </div>
+          </div>
+          <div id="chart"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Countries</h2>
+            <input id="searchBox" type="search" placeholder="Search" aria-label="Search country" />
+          </div>
+          <div id="tableStatus" class="status">Loading data...</div>
+          <table id="priceTable" hidden>
+            <thead>
+              <tr>
+                <th>Country</th>
+                <th>NGN/L</th>
+                <th>Change</th>
+                <th>%</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const chart = document.getElementById("chart");
+      const lowestButton = document.getElementById("lowestButton");
+      const highestButton = document.getElementById("highestButton");
+      const searchBox = document.getElementById("searchBox");
+      const table = document.getElementById("priceTable");
+      const tableBody = table.querySelector("tbody");
+      const tableStatus = document.getElementById("tableStatus");
+      let rows = [];
+      let viewMode = "highest";
+
+      const money = new Intl.NumberFormat("en-NG", {
+        style: "currency",
+        currency: "NGN",
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+      });
+
+      const exchangeRateFormat = new Intl.NumberFormat("en-NG", {
+        style: "currency",
+        currency: "NGN",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      });
+
+      function sortedRows(sourceRows) {
+        const direction = viewMode === "lowest" ? 1 : -1;
+        return [...sourceRows].sort((a, b) => direction * (a.price_ngn_per_litre - b.price_ngn_per_litre));
+      }
+
+      function filteredRows() {
+        const query = searchBox.value.trim().toLowerCase();
+        const filtered = query
+          ? rows.filter((row) => row.country.toLowerCase().includes(query))
+          : rows;
+
+        return sortedRows(filtered);
+      }
+
+      function rankedRows() {
+        return filteredRows().slice(0, 10);
+      }
+
+      function updateButtons() {
+        lowestButton.classList.toggle("active", viewMode === "lowest");
+        highestButton.classList.toggle("active", viewMode === "highest");
+      }
+
+      function renderMetrics() {
+        if (!rows.length) return;
+        const prices = rows.map((row) => row.price_ngn_per_litre);
+        const average = prices.reduce((sum, price) => sum + price, 0) / prices.length;
+        const lowest = [...rows].sort((a, b) => a.price_ngn_per_litre - b.price_ngn_per_litre)[0];
+        const highest = [...rows].sort((a, b) => b.price_ngn_per_litre - a.price_ngn_per_litre)[0];
+
+        document.getElementById("metricCount").textContent = rows.length;
+        document.getElementById("metricAverage").textContent = money.format(average);
+        document.getElementById("metricLowest").textContent = `${lowest.country} ${money.format(lowest.price_ngn_per_litre)}`;
+        document.getElementById("metricHighest").textContent = `${highest.country} ${money.format(highest.price_ngn_per_litre)}`;
+      }
+
+      function renderChart() {
+        const data = rankedRows();
+        Plotly.react(
+          chart,
+          [
+            {
+              type: "scatter",
+              mode: "lines+markers",
+              x: data.map((row) => row.country),
+              y: data.map((row) => row.price_ngn_per_litre),
+              line: {
+                color: viewMode === "lowest" ? "#1f7a4d" : "#b84a3b",
+                width: 3,
+                shape: "spline"
+              },
+              marker: {
+                color: viewMode === "lowest" ? "#1f7a4d" : "#b84a3b",
+                size: 9
+              },
+              hovertemplate: "%{x}<br>%{y:,.0f} NGN/L<extra></extra>"
+            }
+          ],
+          {
+            margin: { l: 64, r: 24, t: 18, b: 120 },
+            paper_bgcolor: "#ffffff",
+            plot_bgcolor: "#ffffff",
+            xaxis: { tickangle: -35, automargin: true },
+            yaxis: { title: "Naira per litre", gridcolor: "#e9eee9", zeroline: false },
+            font: { family: "Inter, system-ui, sans-serif", color: "#17201b" },
+            height: 540
+          },
+          { displayModeBar: false, responsive: true }
+        );
+      }
+
+      function renderTable() {
+        const data = filteredRows();
+        if (!data.length) {
+          table.hidden = true;
+          tableStatus.textContent = "No countries match your search.";
+          tableStatus.hidden = false;
+          return;
+        }
+
+        tableBody.innerHTML = data
+          .map((row) => {
+            const change = row.change_ngn != null ? `${row.change_ngn > 0 ? "+" : ""}${money.format(row.change_ngn)}` : "—";
+            const changePct = row.change_pct != null ? `${row.change_pct > 0 ? "+" : ""}${row.change_pct.toFixed(2)}%` : "—";
+            return `<tr><td>${row.country}</td><td>${money.format(row.price_ngn_per_litre)}</td><td>${change}</td><td>${changePct}</td></tr>`;
+          })
+          .join("");
+        table.hidden = false;
+        tableStatus.hidden = true;
+      }
+
+      function render() {
+        updateButtons();
+        renderMetrics();
+        renderChart();
+        renderTable();
+      }
+
+      async function loadData() {
+        try {
+          const response = await fetch("/api/fuel");
+          if (!response.ok) throw new Error(`API returned ${response.status}`);
+          const payload = await response.json();
+          rows = payload.rows || [];
+          document.getElementById("sourceDate").textContent = payload.exchange_rate
+            ? `Fuel week: ${payload.source_date} | CBN: ${exchangeRateFormat.format(payload.exchange_rate.usd_ngn)}/$ (${payload.exchange_rate.date})`
+            : "Source: GlobalPetrolPrices";
+
+          const weekSummary = document.getElementById("weekSummary");
+          if (payload.previous_week_date) {
+            weekSummary.textContent = `Comparing to previous week: ${payload.previous_week_date}. ${payload.rows.filter(r => r.change_ngn != null).length} countries changed.`;
+          } else if (payload.history_count > 1) {
+            weekSummary.textContent = `Week ${payload.week_index} of ${payload.history_count}. No direct previous week available for comparison.`;
+          } else {
+            weekSummary.textContent = `Week ${payload.week_index || 1}: first tracked week.`;
+          }
+
+          render();
+        } catch (error) {
+          tableStatus.textContent = `Could not load fuel prices: ${error.message}`;
+        }
+      }
+
+      lowestButton.addEventListener("click", () => {
+        viewMode = "lowest";
+        render();
+      });
+      highestButton.addEventListener("click", () => {
+        viewMode = "highest";
+        render();
+      });
+      searchBox.addEventListener("input", render);
+      loadData();
+    </script>
+    <footer class="site-footer">
+      <div class="wrap">
+        <div class="footer-logo">
+          <img src="assets/logo.svg" alt="Dashboard logo" />
+          <div class="footer-brand">Pinnacle Daily</div>
+        </div>
+        <div class="footer-right">Dashboard by Oluwadamilola Aluko</div>
+      </div>
+    </footer>
+  </body>
+</html>
