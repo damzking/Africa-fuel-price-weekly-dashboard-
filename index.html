@@ -74,7 +74,7 @@
 
       .metrics {
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(5, minmax(0, 1fr));
         gap: 12px;
         margin-bottom: 18px;
       }
@@ -262,11 +262,12 @@
     </header>
 
     <main class="wrap">
-      <section class="metrics" aria-label="Summary metrics">
-        <div class="metric"><span>Countries</span><strong id="metricCount">--</strong></div>
-        <div class="metric"><span>Average price</span><strong id="metricAverage">--</strong></div>
-        <div class="metric"><span>Lowest</span><strong id="metricLowest">--</strong></div>
-        <div class="metric"><span>Highest</span><strong id="metricHighest">--</strong></div>
+      <section class="metrics" aria-label="Nigeria summary metrics">
+        <div class="metric"><span>Nigeria rank</span><strong id="metricRank">--</strong></div>
+        <div class="metric"><span>Current price</span><strong id="metricCurrent">--</strong></div>
+        <div class="metric"><span>Previous week</span><strong id="metricPrevious">--</strong></div>
+        <div class="metric"><span>Change</span><strong id="metricChange">--</strong></div>
+        <div class="metric"><span>Fuely avg</span><strong id="metricFuely">--</strong></div>
       </section>
 
       <section class="grid">
@@ -352,15 +353,27 @@
 
       function renderMetrics() {
         if (!rows.length) return;
-        const prices = rows.map((row) => row.price_ngn_per_litre);
-        const average = prices.reduce((sum, price) => sum + price, 0) / prices.length;
-        const lowest = [...rows].sort((a, b) => a.price_ngn_per_litre - b.price_ngn_per_litre)[0];
-        const highest = [...rows].sort((a, b) => b.price_ngn_per_litre - a.price_ngn_per_litre)[0];
 
-        document.getElementById("metricCount").textContent = rows.length;
-        document.getElementById("metricAverage").textContent = money.format(average);
-        document.getElementById("metricLowest").textContent = `${lowest.country} ${money.format(lowest.price_ngn_per_litre)}`;
-        document.getElementById("metricHighest").textContent = `${highest.country} ${money.format(highest.price_ngn_per_litre)}`;
+        const nigeria = rows.find((row) => row.country === "Nigeria") || null;
+        const ordered = [...rows].sort((a, b) => a.price_ngn_per_litre - b.price_ngn_per_litre);
+        const nigeriaRank = nigeria ? ordered.findIndex((row) => row.country === "Nigeria") + 1 : null;
+        const fuelyAverage = window.currentFuelyAverage != null ? window.currentFuelyAverage : null;
+
+        document.getElementById("metricRank").textContent = nigeriaRank ? `#${nigeriaRank}/${rows.length}` : "--";
+        document.getElementById("metricCurrent").textContent = nigeria ? money.format(nigeria.price_ngn_per_litre) : "--";
+        document.getElementById("metricPrevious").textContent = nigeria && nigeria.previous_week_price_ngn_per_litre != null
+          ? money.format(nigeria.previous_week_price_ngn_per_litre)
+          : "--";
+        document.getElementById("metricFuely").textContent = fuelyAverage != null ? money.format(fuelyAverage) : "--";
+
+        if (nigeria && nigeria.change_ngn != null) {
+          const sign = nigeria.change_ngn > 0 ? "+" : "";
+          const pctSign = nigeria.change_pct != null && nigeria.change_pct > 0 ? "+" : "";
+          const pctText = nigeria.change_pct != null ? ` (${pctSign}${nigeria.change_pct.toFixed(2)}%)` : "";
+          document.getElementById("metricChange").textContent = `${sign}${money.format(nigeria.change_ngn)}${pctText}`;
+        } else {
+          document.getElementById("metricChange").textContent = "--";
+        }
       }
 
       function renderChart() {
@@ -431,6 +444,9 @@
           if (!response.ok) throw new Error(`API returned ${response.status}`);
           const payload = await response.json();
           rows = payload.rows || [];
+          window.currentFuelyAverage = payload.fuely && payload.fuely.average_ngn_per_litre != null
+            ? payload.fuely.average_ngn_per_litre
+            : null;
           document.getElementById("sourceDate").textContent = payload.exchange_rate
             ? `Fuel week: ${payload.source_date} | CBN: ${exchangeRateFormat.format(payload.exchange_rate.usd_ngn)}/$ (${payload.exchange_rate.date})`
             : "Source: GlobalPetrolPrices";
@@ -467,7 +483,10 @@
           <img src="assets/logo.svg" alt="Dashboard logo" />
           <div class="footer-brand">Pinnacle Daily</div>
         </div>
-        <div class="footer-right">Dashboard by Oluwadamilola Aluko</div>
+        <div class="footer-right">
+          <div>Source: GlobalPetrolPrices.com • Fuely.ng</div>
+          <div>Dashboard by Oluwadamilola Aluko</div>
+        </div>
       </div>
     </footer>
   </body>

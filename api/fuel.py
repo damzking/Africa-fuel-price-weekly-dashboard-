@@ -1,5 +1,6 @@
 from http.server import BaseHTTPRequestHandler
 from html import unescape
+import csv
 import json
 import re
 import time
@@ -9,7 +10,9 @@ from urllib.request import Request, urlopen
 
 
 SOURCE_URL = "https://www.globalpetrolprices.com/gasoline_prices/"
+FUELY_URL = "https://fuely.ng/"
 HISTORY_FILE = Path(__file__).resolve().parent / "fuel_history.json"
+HISTORY_CSV = Path(__file__).resolve().parent / "fuel_history.csv"
 CBN_NFEM_URL = "https://www.cbn.gov.ng/api/GetAllNFEM_RatesGRAPH"
 CACHE_SECONDS = 60 * 60 * 6
 _CACHE = {"time": 0, "payload": None}
@@ -93,21 +96,66 @@ def _fetch_html():
         return response.read().decode("utf-8", errors="replace")
 
 
-def _load_history():
+def _ensure_history_csv():
+    fieldnames = ["source_date", "exchange_rate", "rows", "recorded_at"]
+    if HISTORY_CSV.exists():
+        return
+
+    with HISTORY_CSV.open("w", newline="", encoding="utf-8") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        writer.writeheader()
+
     if not HISTORY_FILE.exists():
-        return []
+        return
 
     try:
-        return json.loads(HISTORY_FILE.read_text("utf-8"))
+        legacy_history = json.loads(HISTORY_FILE.read_text("utf-8"))
     except (json.JSONDecodeError, OSError):
+        return
+
+    if not legacy_history:
+        return
+
+    _save_history(legacy_history)
+
+
+def _load_history():
+    _ensure_history_csv()
+    if not HISTORY_CSV.exists():
         return []
+
+    history = []
+    with HISTORY_CSV.open("r", newline="", encoding="utf-8") as csv_file:
+        reader = csv.DictReader(csv_file)
+        for row in reader:
+            if not row.get("source_date"):
+                continue
+            history.append(
+                {
+                    "source_date": row.get("source_date"),
+                    "exchange_rate": json.loads(row["exchange_rate"]) if row.get("exchange_rate") else None,
+                    "rows": json.loads(row["rows"]) if row.get("rows") else [],
+                    "recorded_at": row.get("recorded_at"),
+                }
+            )
+    return _sort_history(history)
 
 
 def _save_history(history):
-    try:
-        HISTORY_FILE.write_text(json.dumps(history, indent=2, ensure_ascii=False), "utf-8")
-    except OSError:
-        pass
+    _ensure_history_csv()
+    fieldnames = ["source_date", "exchange_rate", "rows", "recorded_at"]
+    with HISTORY_CSV.open("w", newline="", encoding="utf-8") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        writer.writeheader()
+        for record in _sort_history(history):
+            writer.writerow(
+                {
+                    "source_date": record.get("source_date"),
+                    "exchange_rate": json.dumps(record.get("exchange_rate"), ensure_ascii=False),
+                    "rows": json.dumps(record.get("rows", []), ensure_ascii=False),
+                    "recorded_at": record.get("recorded_at"),
+                }
+            )
 
 
 def _parse_source_date(value):
@@ -228,6 +276,56 @@ def _fetch_cbn_rate():
     }
 
 
+def _extract_fuely_average(html):
+    if not html:
+        return None
+
+    price_matches = re.findall(r"(?:₦|N)\s*([0-9][0-9,]*(?:\.[0-9]+)?)", html)
+    if not price_matches:
+        return None
+
+    values = []
+    for raw in price_matches:
+        cleaned = raw.replace(",", "")
+        try:
+            values.append(float(cleaned))
+        except ValueError:
+            continue
+
+    if not values:
+        return None
+
+    if len(values) >= 2:
+        average = sum(values[:2]) / 2
+        return round(average, 2)
+
+    return round(values[0], 2)
+
+
+def _fetch_fuely_average():
+    request = Request(
+        FUELY_URL,
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/126.0 Safari/537.36"
+            )
+        },
+    )
+    with urlopen(request, timeout=30) as response:
+        html = response.read().decode("utf-8", errors="replace")
+
+    average = _extract_fuely_average(html)
+    if average is None:
+        raise ValueError("Could not find Fuely Nigeria average in the page HTML")
+
+    return {
+        "average_ngn_per_litre": average,
+        "source": FUELY_URL,
+    }
+
+
 def _extract_prices(html):
     date_match = re.search(r"Gasoline prices around the world,\s+([^|<]+)", html)
     source_date = date_match.group(1).strip() if date_match else None
@@ -285,6 +383,7 @@ def _extract_prices(html):
             )
 
     rows.sort(key=lambda item: item["price_ngn_per_litre"])
+    fuely_average = _fetch_fuely_average()
     return {
         "source_date": source_date,
         "exchange_rate": {
@@ -292,6 +391,7 @@ def _extract_prices(html):
             "date": exchange_rate["date"],
             "source": exchange_rate["source"],
         },
+        "fuely": fuely_average,
         "count": len(rows),
         "rows": rows,
     }
