@@ -47,11 +47,17 @@ class HistoryDatabaseTests(unittest.TestCase):
         <html>
           <body>
             <h2>Fuel Price Summary</h2>
-            <div>Petrol</div>
-            <div>Lowest</div>
-            <div>₦1,249.00</div>
-            <div>Highest</div>
-            <div>₦1,350.00</div>
+            <div class="price-card">
+              <h5 class="product-name">Petrol</h5>
+              <div class="price-stat-box low">
+                <div>LOWEST</div>
+                <h4 class="price mb-0">₦1,249.00</h4>
+              </div>
+              <div class="price-stat-box high">
+                <div>HIGHEST</div>
+                <h4 class="price mb-0">₦1,350.00</h4>
+              </div>
+            </div>
           </body>
         </html>
         """

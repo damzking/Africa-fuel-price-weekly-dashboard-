@@ -280,26 +280,17 @@ def _extract_fuely_average(html):
     if not html:
         return None
 
-    price_matches = re.findall(r"(?:₦|N)\s*([0-9][0-9,]*(?:\.[0-9]+)?)", html)
-    if not price_matches:
+    matches = re.findall(
+        r"(?is)LOWEST.*?<h4[^>]*class=\"[^\"]*price[^\"]*\"[^>]*>\s*(?:₦|N)\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*</h4>.*?HIGHEST.*?<h4[^>]*class=\"[^\"]*price[^\"]*\"[^>]*>\s*(?:₦|N)\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*</h4>",
+        html,
+    )
+    if not matches:
         return None
 
-    values = []
-    for raw in price_matches:
-        cleaned = raw.replace(",", "")
-        try:
-            values.append(float(cleaned))
-        except ValueError:
-            continue
-
-    if not values:
-        return None
-
-    if len(values) >= 2:
-        average = sum(values[:2]) / 2
-        return round(average, 2)
-
-    return round(values[0], 2)
+    low, high = matches[0]
+    low_value = float(low.replace(",", ""))
+    high_value = float(high.replace(",", ""))
+    return round((low_value + high_value) / 2, 2)
 
 
 def _fetch_fuely_average():
