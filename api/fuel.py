@@ -7,14 +7,25 @@ import time
 from datetime import datetime
 from pathlib import Path
 from urllib.request import Request, urlopen
+import os
+import tempfile
 
 
 SOURCE_URL = "https://www.globalpetrolprices.com/gasoline_prices/"
 FUELY_URL = "https://fuely.ng/"
-HISTORY_FILE = Path(__file__).resolve().parent / "fuel_history.json"
-HISTORY_CSV = Path(__file__).resolve().parent / "fuel_history.csv"
 CBN_NFEM_URL = "https://www.cbn.gov.ng/api/GetAllNFEM_RatesGRAPH"
 CACHE_SECONDS = 60 * 60 * 6
+
+# History files should not be written to the deployment bundle on serverless
+# platforms (Vercel). Allow disabling history or redirecting to /tmp.
+_USE_TEMP_HISTORY = bool(os.environ.get("VERCEL") or os.environ.get("DISABLE_HISTORY"))
+if _USE_TEMP_HISTORY:
+    _HISTORY_DIR = Path(tempfile.gettempdir())
+else:
+    _HISTORY_DIR = Path(__file__).resolve().parent
+
+HISTORY_FILE = _HISTORY_DIR / "fuel_history.json"
+HISTORY_CSV = _HISTORY_DIR / "fuel_history.csv"
 _CACHE = {"time": 0, "payload": None}
 
 AFRICAN_COUNTRIES = {
@@ -92,7 +103,9 @@ def _fetch_html():
             )
         },
     )
-    with urlopen(request, timeout=30) as response:
+    # Use a shorter timeout in serverless environments to avoid function timeouts
+    timeout = 10 if _USE_TEMP_HISTORY else 30
+    with urlopen(request, timeout=timeout) as response:
         return response.read().decode("utf-8", errors="replace")
 
 
@@ -265,15 +278,20 @@ def _fetch_cbn_rate():
             ),
         },
     )
-    with urlopen(request, timeout=30) as response:
-        data = json.loads(response.read().decode("utf-8", errors="replace"))
+    try:
+        timeout = 8 if _USE_TEMP_HISTORY else 30
+        with urlopen(request, timeout=timeout) as response:
+            data = json.loads(response.read().decode("utf-8", errors="replace"))
 
-    latest = max(data, key=lambda item: int(item["id"]))
-    return {
-        "rate": float(latest["weightedAvgRate"]),
-        "date": latest["ratedate"],
-        "source": CBN_NFEM_URL,
-    }
+        latest = max(data, key=lambda item: int(item["id"]))
+        return {
+            "rate": float(latest["weightedAvgRate"]),
+            "date": latest["ratedate"],
+            "source": CBN_NFEM_URL,
+        }
+    except Exception:
+        # On failure return None so callers can still provide partial payloads
+        return None
 
 
 def _extract_fuely_average(html):
@@ -304,17 +322,21 @@ def _fetch_fuely_average():
             )
         },
     )
-    with urlopen(request, timeout=30) as response:
-        html = response.read().decode("utf-8", errors="replace")
+    try:
+        timeout = 8 if _USE_TEMP_HISTORY else 30
+        with urlopen(request, timeout=timeout) as response:
+            html = response.read().decode("utf-8", errors="replace")
 
-    average = _extract_fuely_average(html)
-    if average is None:
-        raise ValueError("Could not find Fuely Nigeria average in the page HTML")
+        average = _extract_fuely_average(html)
+        if average is None:
+            return None
 
-    return {
-        "average_ngn_per_litre": average,
-        "source": FUELY_URL,
-    }
+        return {
+            "average_ngn_per_litre": average,
+            "source": FUELY_URL,
+        }
+    except Exception:
+        return None
 
 
 def _extract_prices(html):
@@ -367,7 +389,10 @@ def _extract_prices(html):
                     "country": country,
                     "fuel_type": "Gasoline",
                     "price_usd_per_litre": price,
-                    "price_ngn_per_litre": round(price * exchange_rate["rate"], 2),
+                    # If we couldn't fetch the exchange rate, leave NGN price null
+                    "price_ngn_per_litre": round(price * exchange_rate["rate"], 2)
+                    if exchange_rate and exchange_rate.get("rate")
+                    else None,
                     "source_date": source_date,
                     "source": SOURCE_URL,
                 }
